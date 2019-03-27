@@ -191,8 +191,8 @@ func CheckReceive(t *testing.T,
 
 	if VERBOSE {
 		fmt.Printf("0x%0X receiving message from 0x%0X, counter: %d, next share: %0X, ciphertext: %0X\n",
-			message.Sender.Fingerprint()[:HANDLE_LENGTH],
 			message.Receiver.Fingerprint()[:HANDLE_LENGTH],
+			message.Sender.Fingerprint()[:HANDLE_LENGTH],
 			message.Counter,
 			message.NextDHRatchet.Fingerprint(),
 			message.Ciphertext)
@@ -394,8 +394,8 @@ func TestSynchronousChatVector(t *testing.T) {
 	CheckTestVector(t, message.NextDHRatchet.Fingerprint(), "EF8D206106A74C26DBC3EB4F8679D3DB", "NextDHRatchet")
 	CheckTestVector(t, []byte{byte(message.Counter)}, "01", "Counter")
 	CheckTestVector(t, []byte{byte(message.LastUpdate)}, "00", "LastUpdate")
-	CheckTestVector(t, message.Ciphertext, "52D0A0679552808A67C2C5F13A6607CBBFC3FEA30B28", "Ciphertext")
 	CheckTestVector(t, message.IV, "0102030405060708090A0B0C", "IV")
+	CheckTestVector(t, message.Ciphertext, "52D0A0679552808A67C2C5F13A6607CBBFC3FEA30B28", "Ciphertext")
 
 	SkipOnError(t, CheckReceive(t, alice, message, "Alice?"))
 
@@ -408,8 +408,8 @@ func TestSynchronousChatVector(t *testing.T) {
 	CheckTestVector(t, message.NextDHRatchet.Fingerprint(), "CE0753ABB34AFC0EDC95B3BF72924E20", "NextDHRatchet")
 	CheckTestVector(t, []byte{byte(message.Counter)}, "01", "Counter")
 	CheckTestVector(t, []byte{byte(message.LastUpdate)}, "00", "LastUpdate")
-	CheckTestVector(t, message.Ciphertext, "D338E92B04DAA4F6C25F6AE3952A8EBB46BF29DE9CDB", "Ciphertext")
 	CheckTestVector(t, message.IV, "0102030405060708090A0B0C", "IV")
+	CheckTestVector(t, message.Ciphertext, "D338E92B04DAA4F6C25F6AE3952A8EBB46BF29DE9CDB", "Ciphertext")
 
 	SkipOnError(t, CheckReceive(t, bob, message, "Bob..."))
 
@@ -433,8 +433,8 @@ func TestSynchronousChatVector(t *testing.T) {
 	CheckTestVector(t, message.NextDHRatchet.Fingerprint(), "34FAB4CF6AE3CFB23A9AF2C0ECE3C4E2", "NextDHRatchet")
 	CheckTestVector(t, []byte{byte(message.Counter)}, "06", "Counter")
 	CheckTestVector(t, []byte{byte(message.LastUpdate)}, "04", "LastUpdate")
-	CheckTestVector(t, message.Ciphertext, "8E3E9C653B7DF0CA5613F4DB3ADC895FEA6CEDFDA4C7E3CD31070A", "Ciphertext")
 	CheckTestVector(t, message.IV, "0102030405060708090A0B0C", "IV")
+	CheckTestVector(t, message.Ciphertext, "8E3E9C653B7DF0CA5613F4DB3ADC895FEA6CEDFDA4C7E3CD31070A", "Ciphertext")
 }
 
 // TestTeardown tests that a session can be ended by calling
@@ -592,12 +592,9 @@ func DeliverQueuedMessage(t *testing.T,
 	return CheckReceive(t, c[*q[i].Receiver], q[i], "")
 }
 
-// TestAsynchronousChatExtended creates an array of EXTENDED_TEST_PARTICIPANTS
-// chatters. In each round, it then randomly either enqueues a sent message
-// from a random chatter to another, or picks a message from the queue
-// and delivers it. This runs for EXTENDED_TEST_ROUNDS. Errors are induced with
-// probability EXTENDED_TEST_ERROR_RATE, set this above zero to test error
-// recovery. If the setup fails, the test is skipped.
+// TestAsynchronousChat tests a short chat sequence between Alice and Bob with
+// many message delayed and delivered out of order. No delivery errors occur.
+// If the setup fails, the test is skipped.
 func TestAsynchronousChat(t *testing.T) {
 
 	alice := NewChatter()
@@ -610,31 +607,44 @@ func TestAsynchronousChat(t *testing.T) {
 		fmt.Printf("-------------------------------\n\n")
 	}
 
-	queue := make([]*Message, 9)
+	aliceQueue := make([]*Message, 5)
+	bobQueue := make([]*Message, 5)
 
 	c := make(map[PublicKey]*Chatter)
 	c[alice.Identity.PublicKey] = alice
 	c[bob.Identity.PublicKey] = bob
 
-	SendQueuedMessage(t, queue, 1, alice, bob, "1")
-	SendQueuedMessage(t, queue, 2, alice, bob, "2")
-	SendQueuedMessage(t, queue, 3, bob, alice, "3")
-	SendQueuedMessage(t, queue, 4, alice, bob, "4")
-	SendQueuedMessage(t, queue, 5, bob, alice, "5")
-	FailOnError(t, DeliverQueuedMessage(t, c, queue, 5, false))
-	FailOnError(t, DeliverQueuedMessage(t, c, queue, 3, false))
-	FailOnError(t, DeliverQueuedMessage(t, c, queue, 4, false))
-	SendQueuedMessage(t, queue, 6, bob, alice, "6")
-	SendQueuedMessage(t, queue, 7, bob, alice, "7")
-	SendQueuedMessage(t, queue, 8, alice, bob, "8")
+	SendQueuedMessage(t, bobQueue, 1, alice, bob, "AB.1")
+	SendQueuedMessage(t, bobQueue, 2, alice, bob, "AB.2")
+	SendQueuedMessage(t, bobQueue, 3, alice, bob, "AB.3")
+	SendQueuedMessage(t, aliceQueue, 1, bob, alice, "BA.1")
+	SendQueuedMessage(t, aliceQueue, 2, bob, alice, "BA.2")
 
-	FailOnError(t, DeliverQueuedMessage(t, c, queue, 7, false))
-	FailOnError(t, DeliverQueuedMessage(t, c, queue, 6, false))
-	FailOnError(t, DeliverQueuedMessage(t, c, queue, 8, false))
-	FailOnError(t, DeliverQueuedMessage(t, c, queue, 2, false))
-	FailOnError(t, DeliverQueuedMessage(t, c, queue, 1, false))
+	FailOnError(t, DeliverQueuedMessage(t, c, aliceQueue, 2, false))
+	FailOnError(t, DeliverQueuedMessage(t, c, aliceQueue, 1, false))
+	FailOnError(t, DeliverQueuedMessage(t, c, bobQueue, 3, false))
+
+	SendQueuedMessage(t, aliceQueue, 3, bob, alice, "BA.3")
+	SendQueuedMessage(t, aliceQueue, 4, bob, alice, "BA.4")
+	SendQueuedMessage(t, bobQueue, 4, alice, bob, "AB.4")
+
+	FailOnError(t, DeliverQueuedMessage(t, c, aliceQueue, 4, false))
+	FailOnError(t, DeliverQueuedMessage(t, c, aliceQueue, 3, false))
+	FailOnError(t, DeliverQueuedMessage(t, c, bobQueue, 4, false))
+	FailOnError(t, DeliverQueuedMessage(t, c, bobQueue, 2, false))
+	FailOnError(t, DeliverQueuedMessage(t, c, bobQueue, 1, false))
+
+	if _, err := bob.ReceiveMessage(bobQueue[1]); err == nil {
+		t.Fatal("Accepted replay of late message without error")
+	}
 }
 
+// TestAsynchronousChatExtended creates an array of EXTENDED_TEST_PARTICIPANTS
+// chatters. In each round, it then randomly either enqueues a sent message
+// from a random chatter to another, or picks a message from the queue
+// and delivers it. This runs for EXTENDED_TEST_ROUNDS. Errors are induced with
+// probability EXTENDED_TEST_ERROR_RATE, set this above zero to test error
+// recovery. If the setup fails, the test is skipped.
 func TestAsynchronousChatExtended(t *testing.T) {
 
 	if testing.Short() {
